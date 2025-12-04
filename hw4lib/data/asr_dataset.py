@@ -88,14 +88,11 @@ class ASRDataset(Dataset):
         self.pad_token = getattr(tokenizer, 'pad_id', getattr(tokenizer, 'pad_token_id', 2))
         # Set up data paths 
         # TODO: Use root and partition to get the feature directory
-        self.fbank_dir   = sorted([f for f in os.listdir(self.fbank_dir) if f.endswith('.npy')])
+        self.fbank_dir = os.path.join(config['root'], partition, 'fbank')
         # TODO: Get all feature files in the feature directory in sorted order  
         if not os.path.exists(self.fbank_dir):
              raise ValueError(f"Feature directory not found: {self.fbank_dir}")
         self.fbank_files = sorted([f for f in os.listdir(self.fbank_dir) if f.endswith('.npy')])
-
-        subset_size = int(len(self.fbank_files) * config.get('subset', 1.0))
-        self.fbank_files = self.fbank_files[:subset_size]
         
         # TODO: Take subset
         subset_size = int(len(self.fbank_files) * config.get('subset', 1.0))
@@ -209,8 +206,11 @@ class ASRDataset(Dataset):
                 self.text_max_len = max(self.text_max_len, len(tokenized)+1)
                 
                 # TODO: Create shifted and golden versions by adding sos and eos tokens   
-                self.transcripts_shifted.append(NotImplementedError)
-                self.transcripts_golden.append(NotImplementedError)
+                sos_tensor = torch.tensor([self.sos_token], dtype=torch.long)
+                eos_tensor = torch.tensor([self.eos_token], dtype=torch.long)
+                
+                self.transcripts_shifted.append(torch.cat([sos_tensor, tokenized_tensor]))
+                self.transcripts_golden.append(torch.cat([tokenized_tensor, eos_tensor]))
 
         # Calculate average characters per token
         # DO NOT MODIFY 

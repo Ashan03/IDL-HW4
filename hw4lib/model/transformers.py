@@ -374,7 +374,7 @@ class EncoderDecoderTransformer(nn.Module):
             if self.training and self.layer_drop_rate > 0 and random.random() < self.layer_drop_rate:
                 continue
             # TODO: Pass through encoder layer
-            x_enc, attention = NotImplementedError, NotImplementedError
+            x_enc, attention = self.enc_layers[i](x_enc, pad_mask_src)
             
             # Save attention weights
             running_att[f'layer{i+1}_enc_self'] = attention
