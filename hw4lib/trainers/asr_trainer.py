@@ -237,7 +237,7 @@ class ASRTrainer(BaseTrainer):
         results = self.recognize(
             dataloader, 
             # Limit to 20 batches for speed. Beam width 1 = Greedy Search.
-            recognition_config={'beam_width': 1, 'num_batches': 20}, 
+            recognition_config={'beam_width': 1, 'num_batches': 10}, 
             config_name="validation"
         )
         # TODO: Extract references and hypotheses from results
@@ -423,7 +423,10 @@ class ASRTrainer(BaseTrainer):
                 # TODO: Unpack batch and move to device
                 # TODO: Handle both cases where targets may or may not be None (val set v. test set) 
                 feats = batch[0].to(self.device)
-                targets_golden = batch[2].to(self.device) # Might be dummy indices for test
+                if batch[2] is not None:
+                    targets_golden = batch[2].to(self.device)
+                else:
+                    targets_golden = None
                 feat_lengths = batch[3].to(self.device)
                 # TODO: Encode speech features to hidden states
                 encoder_output, pad_mask_src, _, _ = self.model.encode(feats, feat_lengths)
