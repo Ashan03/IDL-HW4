@@ -234,16 +234,15 @@ class ASRTrainer(BaseTrainer):
         # raise NotImplementedError # Remove once implemented
 
         # TODO: Call recognize
-        results =self.recognize(
+        results = self.recognize(
             dataloader, 
-            recognition_config={'beam_width': 1}, 
+            # Limit to 20 batches for speed. Beam width 1 = Greedy Search.
+            recognition_config={'beam_width': 1, 'num_batches': 20}, 
             config_name="validation"
         )
-        
         # TODO: Extract references and hypotheses from results
         references = [r['target'] for r in results]
         hypotheses = [r['generated'] for r in results]
-        
         # Calculate metrics on full batch
         metrics = self._calculate_asr_metrics(references, hypotheses)
         
@@ -328,7 +327,7 @@ class ASRTrainer(BaseTrainer):
             self.current_epoch += 1
                 
 
-    def evaluate(self, dataloader, max_length: Optional[int] = None) -> Dict[str, Dict[str, float]]:
+    def evaluate(self, dataloader, max_length: Optional[int] = None) -> Dict[str, pd.DataFrame]:
         """
         Evaluate the model on the test set. Sequentially evaluates with each recognition config.
         
@@ -435,7 +434,7 @@ class ASRTrainer(BaseTrainer):
                         
                         lm_logits = recognition_config['lm_model'].score(x)
                         
-                        return asr_logits + (recognition_config['lm_weight'] * lm_logits)
+                        return asr_logits + (recognition_config.get('lm_weight', 0.0) * lm_logits)
                     
                     generator.score_fn = get_score_wrapper
                 else:
@@ -539,7 +538,7 @@ class ASRTrainer(BaseTrainer):
             'beam_20': beam_20_config
         }
         
-    def _calculate_asr_metrics(self, references: Union[str, List[str]], hypotheses: Union[str, List[str]]) -> Tuple[float, float, float]:
+    def _calculate_asr_metrics(self, references: Union[str, List[str]], hypotheses: Union[str, List[str]]) -> Dict[str, float]:
         """
         Calculate Levenshtein distance, WER, CER for strings or lists of strings.
         
@@ -547,7 +546,7 @@ class ASRTrainer(BaseTrainer):
             references: Reference string(s)
             hypotheses: Hypothesis string(s)
         Returns:
-            Tuple of (word_dist, wer, cer)
+            Dictionary of (word_dist, wer, cer)
         """
         # Initialize metrics
         wer_metric = tmt.WordErrorRate()
