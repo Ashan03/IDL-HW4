@@ -497,7 +497,7 @@ class ASRTrainer(BaseTrainer):
 
                 batch_bar.update()
 
-                if recognition_config['num_batches'] is not None and i >= recognition_config['num_batches'] - 1:
+                if recognition_config.get('num_batches') is not None and i >= recognition_config['num_batches'] - 1:
                     break
 
             batch_bar.close()
