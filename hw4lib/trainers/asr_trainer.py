@@ -79,7 +79,7 @@ class ASRTrainer(BaseTrainer):
                 zero_infinity=True
             )
 
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler(device=self.device)
         # raise NotImplementedError # Remove once implemented
 
 
@@ -135,11 +135,18 @@ class ASRTrainer(BaseTrainer):
                 
                 # TODO: Calculate CTC loss if needed
                 if self.ctc_weight > 0:
+                    log_probs = ctc_inputs['log_probs']
+                    input_lengths = ctc_inputs['lengths']
+                    
+                    non_pad_mask = targets_golden != self.tokenizer.pad_id
+                    targets_ctc = targets_golden[non_pad_mask]
+                    target_lengths = non_pad_mask.sum(dim=1).to(self.device)
+
                     ctc_loss = self.ctc_criterion(
-                        ctc_inputs['log_probs'], 
-                        targets_golden, 
-                        ctc_inputs['lengths'], 
-                        transcript_lengths
+                        log_probs, 
+                        targets_ctc, 
+                        input_lengths, 
+                        target_lengths
                     )
                     loss = ce_loss + (self.ctc_weight * ctc_loss)
                 else:
@@ -431,20 +438,15 @@ class ASRTrainer(BaseTrainer):
                 # TODO: Encode speech features to hidden states
                 encoder_output, pad_mask_src, _, _ = self.model.encode(feats, feat_lengths)
                 # Define scoring function for this batch
-                if recognition_config.get('lm_model') is not None:
-                    def get_score_wrapper(x, **kwargs):
-                        asr_logits = self.model.score(x, **kwargs)
-                        
+                def get_score(x):
+                    asr_logits = self.model.score(x, encoder_output, pad_mask_src)
+                    if recognition_config.get('lm_model') is not None:
                         lm_logits = recognition_config['lm_model'].score(x)
-                        
                         return asr_logits + (recognition_config.get('lm_weight', 0.0) * lm_logits)
-                    
-                    generator.score_fn = get_score_wrapper
-                else:
-                    generator.score_fn = self.model.score
+                    return asr_logits
                 
                 # Set score function of generator
-                
+                generator.score_fn = get_score
 
                 # TODO: Initialize prompts as a batch of SOS tokens
                 batch_size = feats.size(0)
@@ -460,8 +462,6 @@ class ASRTrainer(BaseTrainer):
                         beam_width=beam_width,
                         temperature=recognition_config.get('temperature', 1.0),
                         repeat_penalty=recognition_config.get('repeat_penalty', 1.0),
-                        encoder_output=encoder_output, 
-                        pad_mask_src=pad_mask_src
                     )
                     # Use best beam
                     seqs = seqs[:, 0, :]
@@ -471,8 +471,6 @@ class ASRTrainer(BaseTrainer):
                         prompts,
                         temperature=recognition_config.get('temperature', 1.0),
                         repeat_penalty=recognition_config.get('repeat_penalty', 1.0),
-                        encoder_output=encoder_output,
-                        pad_mask_src=pad_mask_src    
                     )
                 # Clean up
                 del feats, feat_lengths, encoder_output, pad_mask_src, prompts

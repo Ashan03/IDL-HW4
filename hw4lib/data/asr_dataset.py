@@ -83,9 +83,9 @@ class ASRDataset(Dataset):
 
         # TODO: Get tokenizer ids for special tokens (eos, sos, pad)
         # Hint: See the class members of the H4Tokenizer class
-        self.eos_token = getattr(tokenizer, 'eos_id', getattr(tokenizer, 'eos_token_id', 1))
-        self.sos_token = getattr(tokenizer, 'sos_id', getattr(tokenizer, 'sos_token_id', 0))
-        self.pad_token = getattr(tokenizer, 'pad_id', getattr(tokenizer, 'pad_token_id', 2))
+        self.eos_token = tokenizer.eos_id
+        self.sos_token = tokenizer.sos_id
+        self.pad_token = tokenizer.pad_id
         # Set up data paths 
         # TODO: Use root and partition to get the feature directory
         self.fbank_dir = os.path.join(config['root'], partition, 'fbank')
@@ -96,9 +96,10 @@ class ASRDataset(Dataset):
         
         # TODO: Take subset
         subset_fraction = config.get('subset', 1.0)
-        subset_size = int(len(self.fbank_files) * subset_fraction)
-        if subset_size == 0 and len(self.fbank_files) > 0:
-             subset_size = 1
+        if subset_fraction < 1.0:
+            subset_size = max(1, int(len(self.fbank_files) * subset_fraction))
+        else:
+            subset_size = len(self.fbank_files)
         self.fbank_files = self.fbank_files[:subset_size]
         
         # TODO: Get the number of samples in the dataset  
@@ -184,21 +185,14 @@ class ASRDataset(Dataset):
                 # TODO: Load the transcript
                 # Note: Use np.load to load the numpy array and convert to list and then join to string 
                 text_path = os.path.join(self.text_dir, self.text_files[i])
-                try:
-                    text_data = np.load(text_path)
-                    if isinstance(text_data, np.ndarray):
-                        transcript = str(text_data)
-                    else:
-                        transcript = str(text_data)
-                except:
-                    transcript = ""
+                char_arr  = np.load(text_path, allow_pickle=True)
+                transcript = "".join(char_arr.tolist())
 
                 # TODO: Track character count (before tokenization)
                 self.total_chars += len(transcript)
 
                 # TODO: Use tokenizer to encode the transcript (see tokenizer.encode for details)
                 tokenized = self.tokenizer.encode(transcript)
-                tokenized_tensor = torch.tensor(tokenized, dtype=torch.long)
 
                 # Track token count (excluding special tokens)
                 # DO NOT MODIFY
@@ -209,11 +203,10 @@ class ASRDataset(Dataset):
                 self.text_max_len = max(self.text_max_len, len(tokenized)+1)
                 
                 # TODO: Create shifted and golden versions by adding sos and eos tokens   
-                sos_tensor = torch.tensor([self.sos_token], dtype=torch.long)
-                eos_tensor = torch.tensor([self.eos_token], dtype=torch.long)
-                
-                self.transcripts_shifted.append(torch.cat([sos_tensor, tokenized_tensor]))
-                self.transcripts_golden.append(torch.cat([tokenized_tensor, eos_tensor]))
+                shifted = [self.sos_token] + tokenized
+                golden  = tokenized + [self.eos_token]
+                self.transcripts_shifted.append(shifted)
+                self.transcripts_golden.append(golden)
 
         # Calculate average characters per token
         # DO NOT MODIFY 
@@ -274,7 +267,7 @@ class ASRDataset(Dataset):
                 - golden_transcript: LongTensor  (time) or None
         """
         # TODO: Load features
-        feat = self.feats[idx]
+        feat = torch.from_numpy(self.feats[idx]).float()
         # raise NotImplementedError
 
         # TODO: Apply normalization
@@ -290,8 +283,8 @@ class ASRDataset(Dataset):
         shifted_transcript, golden_transcript = None, None
         if self.partition != "test-clean":
             # TODO: Get transcripts for non-test partitions
-            shifted_transcript =self.transcripts_shifted[idx]
-            golden_transcript  = self.transcripts_golden[idx]
+            shifted_transcript = torch.tensor(self.transcripts_shifted[idx], dtype=torch.long)
+            golden_transcript  = torch.tensor(self.transcripts_golden[idx], dtype=torch.long)
 
         return feat, shifted_transcript, golden_transcript
         # raise NotImplementedError # Remove once implemented
